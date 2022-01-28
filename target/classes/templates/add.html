@@ -1,0 +1,34 @@
+<html lang="en"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:th="http://www.thymeleaf.org">
+<head>
+    <title>Add new user</title>
+</head>
+
+<body>
+<div>
+    <h1>Simply lovely!</h1>
+</div>
+
+<div>
+    <div>
+        <div>
+            <h2>Add user</h2>
+        </div>
+        <form method="post" th:action="@{/add}">
+            <label>Name:
+                <input type="text" name="username" style="width: 30%"><br />
+            </label>
+            <label>Password:
+                <input type="password" name="password" style="width: 30%"><br />
+            </label>
+            <button type="submit" >Submit</button>
+        </form>
+    </div>
+</div>
+
+<div>
+    <button onclick="location.href='/'">Back to main</button>
+</div>
+</body>
+</html>
