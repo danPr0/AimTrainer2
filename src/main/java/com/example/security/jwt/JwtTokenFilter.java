@@ -1,6 +1,7 @@
 package com.example.security.jwt;
 
 import com.example.service.UserService;
+import io.jsonwebtoken.ExpiredJwtException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -39,9 +40,13 @@ public class JwtTokenFilter extends OncePerRequestFilter {
                 createAuthentication(token);
             }
         }
-        catch (Exception e) {
+        catch (ExpiredJwtException e) {
             logger.error("Cannot set user authentication: {}", e.getMessage());
             response.setHeader("TokenStatus", "expired");
+        }
+        catch (Exception e) {
+            logger.error("Cannot set user authentication: {}", e.getMessage());
+            response.setHeader("TokenStatus", "invalid");
         }
 
         filterChain.doFilter(request, response);
