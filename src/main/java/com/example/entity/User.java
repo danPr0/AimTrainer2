@@ -33,6 +33,10 @@ public class User implements UserDetails {
             inverseJoinColumns=@JoinColumn(name="role_id"))
     private Set<Role> roles;
 
+//    @OneToOne(cascade = CascadeType.ALL)
+//    @JoinColumn(name = "refresh_token_id", referencedColumnName = "id")
+//    private RefreshToken refreshToken;
+
     public User() {}
 
     public User(String username, String password){

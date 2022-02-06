@@ -20,16 +20,16 @@ public class AdminController {
         return "admin";
     }
 
-    @GetMapping("/get/{userId}")
-    public String  getUser(@PathVariable("userId") Long userId, Model model) {
-        User user = userService.findUserById(userId);
-        System.out.print(1111111);
-        if (user != null)
-            //model.addAttribute("result", user.toString());
-            return user.toString();
-        else model.addAttribute("result", "No such user!");
-        return "dsdfsd";
-    }
+//    @GetMapping("/get/{userId}")
+//    public String  getUser(@PathVariable("userId") Long userId, Model model) {
+//        User user = userService.findUserById(userId);
+//        System.out.print(1111111);
+//        if (user != null)
+//            //model.addAttribute("result", user.toString());
+//            return user.toString();
+//        else model.addAttribute("result", "No such user!");
+//        return "dsdfsd";
+//    }
 
     @GetMapping("/delete/{userId}")
     public String  deleteUser(@PathVariable("userId") Long userId, Model model) {

@@ -4,6 +4,7 @@ import com.example.entity.Role;
 import com.example.repository.UserRepository;
 import com.example.entity.User;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
@@ -19,6 +20,7 @@ import java.util.Optional;
 import java.util.Set;
 
 @Service
+@Transactional
 public class UserService implements UserDetailsService {
     private final UserRepository userRepository;
     private final BCryptPasswordEncoder bCryptPasswordEncoder;
@@ -27,27 +29,19 @@ public class UserService implements UserDetailsService {
     private EntityManager em;
 
     @Autowired
-    public UserService(UserRepository userRepository, BCryptPasswordEncoder bCryptPasswordEncoder) {
+    public UserService(UserRepository userRepository, @Lazy BCryptPasswordEncoder bCryptPasswordEncoder) {
         this.userRepository = userRepository;
         this.bCryptPasswordEncoder = bCryptPasswordEncoder;
     }
 
     @Override
-    @Transactional
     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
-//        User user = userRepository.findUserByUsername(username);
-//
-//        if (user == null) {
-//            throw new UsernameNotFoundException("User not found");
-//        }
-
-        return userRepository.findUserByUsername(username)
-                .orElseThrow(() -> new UsernameNotFoundException("User Not Found with username: " + username));
+        return findUserByUsername(username);
     }
 
-    public User findUserById(long userId) {
-        Optional<User> userFromDb= userRepository.findById(userId);
-        return userFromDb.orElse(new User());
+    public User findUserByUsername(String username) throws UsernameNotFoundException {
+        return userRepository.findByUsername(username)
+                .orElseThrow(() -> new UsernameNotFoundException("User Not Found with username: " + username));
     }
 
     public List<User> allUsers() {
@@ -55,7 +49,7 @@ public class UserService implements UserDetailsService {
     }
 
     public boolean saveUser(User user) {
-        if (userRepository.findUserByUsername(user.getUsername()).orElse(null) == null) {
+        if (userRepository.findByUsername(user.getUsername()).isPresent()) {
             return false;
         }
 
