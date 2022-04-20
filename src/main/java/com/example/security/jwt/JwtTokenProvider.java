@@ -1,61 +1,81 @@
 package com.example.security.jwt;
 
-import io.jsonwebtoken.*;
+import com.example.repository.InvalidAccessTokenRepository;
+import com.example.service.UserService;
+import io.jsonwebtoken.JwtException;
+import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.SignatureAlgorithm;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Component;
+import org.springframework.web.util.WebUtils;
 
 import javax.annotation.PostConstruct;
+import javax.servlet.http.Cookie;
 import javax.servlet.http.HttpServletRequest;
 import java.util.Base64;
 import java.util.Date;
 
 @Component
 public class JwtTokenProvider {
+    private final InvalidAccessTokenRepository invalidAccessTokenRepository;
+    private final UserService userService;
+
     @Value("${security.jwt.token.secret-key}")
     private String secretKey;
 
     @Value("${security.jwt.accessToken.expire-length}")
     private int accessTokenExpiration;
 
+    @Autowired
+    public JwtTokenProvider(InvalidAccessTokenRepository invalidAccessTokenRepository, UserService userService) {
+        this.invalidAccessTokenRepository = invalidAccessTokenRepository;
+        this.userService = userService;
+    }
+
     @PostConstruct
     protected void init() {
         secretKey = Base64.getEncoder().encodeToString(secretKey.getBytes());
     }
 
-    public String generateJwtToken(Authentication authentication) {
-        Claims claims = Jwts.claims().setSubject(((UserDetails) authentication.getPrincipal()).getUsername());
-        claims.put("roles", authentication.getAuthorities());
-        claims.put("username", ((UserDetails) authentication.getPrincipal()).getUsername());
-
+    public String generateJwtToken(UserDetails user) {
         Date now = new Date();
         Date validity = new Date(now.getTime() + accessTokenExpiration);
 
         System.out.println(validity);
 
         return Jwts.builder()
-                .setClaims(claims)
+                .setSubject(user.getUsername())
                 .setIssuedAt(now)
                 .setExpiration(validity)
                 .signWith(SignatureAlgorithm.HS512, secretKey)
                 .compact();
     }
 
-    public String getUsername(String authToken) {
-        return Jwts.parser().setSigningKey(secretKey).parseClaimsJws(authToken).getBody().getSubject();
+    public String getUsername(String token) {
+        return Jwts.parser().setSigningKey(secretKey).parseClaimsJws(token).getBody().getSubject();
     }
 
-    public String resolveToken(HttpServletRequest req) {
-        String bearerToken = req.getHeader("Authorization");
-        if (bearerToken != null && bearerToken.startsWith("Bearer ")) {
-            return bearerToken.substring(7);
-        }
-        return null;
+    public Date getExpiration(String token) {
+        return Jwts.parser().setSigningKey(secretKey).parseClaimsJws(token).getBody().getExpiration();
     }
 
-    public boolean validateToken(String token) throws MalformedJwtException, ExpiredJwtException {
+    public String resolveToken(HttpServletRequest request) {
+        Cookie cookie = WebUtils.getCookie(request, "accessToken");
+        return (cookie != null) ? cookie.getValue() : null;
+    }
+
+    public boolean validateToken(String token) throws JwtException {
         Jwts.parser().setSigningKey(secretKey).parseClaimsJws(token);
-        return true;
+        return invalidAccessTokenRepository.findByToken(token).isEmpty();
+    }
+
+    public Authentication getAuthentication(String token) {
+        String username = Jwts.parser().setSigningKey(secretKey).parseClaimsJws(token).getBody().getSubject();
+        UserDetails user = userService.loadUserByUsername(username);
+        return new UsernamePasswordAuthenticationToken(username, "", user.getAuthorities());
     }
 }

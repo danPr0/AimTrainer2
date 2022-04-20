@@ -4,8 +4,8 @@ import javax.persistence.*;
 import java.util.Date;
 
 @Entity
-@Table(name = "refresh_tokens")
-public class RefreshToken {
+@Table(name = "confirmation_tokens")
+public class ConfirmationToken {
     @Id
     @GeneratedValue(strategy = GenerationType.AUTO)
     private long id;

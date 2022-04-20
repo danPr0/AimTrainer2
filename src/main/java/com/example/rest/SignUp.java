@@ -9,7 +9,9 @@ import lombok.NoArgsConstructor;
 @Builder
 @AllArgsConstructor
 @NoArgsConstructor
-public class RefreshTokenRequest {
+public class SignUp {
     private String username;
-    private String refreshToken;
+    private String email;
+    private String password;
+    private String passwordConfirm;
 }

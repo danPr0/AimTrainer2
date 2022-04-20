@@ -14,11 +14,11 @@ public class AdminController {
         this.userService = userService;
     }
 
-    @GetMapping()
-    public String userList(Model model) {
-        model.addAttribute("allUsers", userService.allUsers());
-        return "admin";
-    }
+//    @GetMapping()
+//    public String userList(Model model) {
+//        model.addAttribute("allUsers", userService.allUsers());
+//        return "admin";
+//    }
 
 //    @GetMapping("/get/{userId}")
 //    public String  getUser(@PathVariable("userId") Long userId, Model model) {

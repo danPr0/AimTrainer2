@@ -1,14 +1,10 @@
 package com.example.security.jwt;
 
-import com.example.service.UserService;
-import io.jsonwebtoken.ExpiredJwtException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
@@ -23,12 +19,10 @@ public class JwtTokenFilter extends OncePerRequestFilter {
     private static final Logger logger = LoggerFactory.getLogger(JwtTokenFilter.class);
 
     private final JwtTokenProvider jwtTokenProvider;
-    private final UserService userService;
 
     @Autowired
-    public JwtTokenFilter(JwtTokenProvider jwtTokenProvider, UserService userService) {
+    public JwtTokenFilter(JwtTokenProvider jwtTokenProvider) {
         this.jwtTokenProvider = jwtTokenProvider;
-        this.userService = userService;
     }
 
     @Override
@@ -39,28 +33,16 @@ public class JwtTokenFilter extends OncePerRequestFilter {
             if (token != null && jwtTokenProvider.validateToken(token)) {
                 createAuthentication(token);
             }
-        }
-        catch (ExpiredJwtException e) {
+        } catch (Exception e) {
             logger.error("Cannot set user authentication: {}", e.getMessage());
-            response.setHeader("TokenStatus", "expired");
-        }
-        catch (Exception e) {
-            logger.error("Cannot set user authentication: {}", e.getMessage());
-            response.setHeader("TokenStatus", "invalid");
         }
 
         filterChain.doFilter(request, response);
     }
 
     public void createAuthentication(String token) {
-        String username = jwtTokenProvider.getUsername(token);
-
-        UserDetails userDetails = userService.loadUserByUsername(username);
-        Authentication authentication = new UsernamePasswordAuthenticationToken(
-                userDetails, userDetails.getPassword(), userDetails.getAuthorities());
-
-        System.out.println(authentication+"filter");
-
+        Authentication authentication = jwtTokenProvider.getAuthentication(token);
         SecurityContextHolder.getContext().setAuthentication(authentication);
+        System.out.println(authentication+"filter");
     }
 }

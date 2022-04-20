@@ -1,5 +1,6 @@
 package com.example.entity;
 
+import com.example.model.AuthProvider;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 
@@ -21,13 +22,28 @@ public class User implements UserDetails {
     @Column(name = "username")
     private String username;
 
+    @Column(name = "email")
+    private String email;
+
+    @Column(name = "sm_result")
+    private double smResult = 0;
+
+    @Column(name = "md_result")
+    private double mdResult = 0;
+
+    @Column(name = "lg_result")
+    private double lgResult = 0;
+
     @Column(name = "password")
     private String password;
 
-    @Transient
-    private String passwordConfirm;
+    @Column(name = "provider")
+    private String provider;
 
-    @ManyToMany(cascade = CascadeType.ALL, fetch = FetchType.EAGER)
+    @Column(name = "enabled")
+    private boolean enabled = false;
+
+    @ManyToMany(fetch = FetchType.EAGER)
     @JoinTable (name="user_role",
             joinColumns=@JoinColumn (name="user_id"),
             inverseJoinColumns=@JoinColumn(name="role_id"))
@@ -35,8 +51,9 @@ public class User implements UserDetails {
 
     public User() {}
 
-    public User(String username, String password){
+    public User(String username, String email, String password){
         setUsername(username);
+        setEmail(email);
         setPassword(password);
     }
 
@@ -66,14 +83,6 @@ public class User implements UserDetails {
         this.password = password;
     }
 
-    public String getPasswordConfirm() {
-        return passwordConfirm;
-    }
-
-    public void setPasswordConfirm(String passwordConfirm) {
-        this.passwordConfirm = passwordConfirm;
-    }
-
     public Set<Role> getRoles() {
         return roles;
     }
@@ -99,7 +108,7 @@ public class User implements UserDetails {
 
     @Override
     public boolean isEnabled() {
-        return true;
+        return enabled;
     }
 
     @Override
@@ -113,5 +122,49 @@ public class User implements UserDetails {
                 "name='" + username + '\'' +
                 ", id='" + userId + '\'' +
                 '}';
+    }
+
+    public String getEmail() {
+        return email;
+    }
+
+    public void setEmail(String email) {
+        this.email = email;
+    }
+
+    public void setEnabled(boolean enabled) {
+        this.enabled = enabled;
+    }
+
+    public AuthProvider getProvider() {
+        return AuthProvider.valueOf(provider);
+    }
+
+    public void setProvider(AuthProvider provider) {
+        this.provider = provider.name();
+    }
+
+    public double getSmResult() {
+        return smResult;
+    }
+
+    public void setSmResult(double smResult) {
+        this.smResult = smResult;
+    }
+
+    public double getMdResult() {
+        return mdResult;
+    }
+
+    public void setMdResult(double mdResult) {
+        this.mdResult = mdResult;
+    }
+
+    public double getLgResult() {
+        return lgResult;
+    }
+
+    public void setLgResult(double lgResult) {
+        this.lgResult = lgResult;
     }
 }
