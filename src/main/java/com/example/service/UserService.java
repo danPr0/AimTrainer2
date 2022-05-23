@@ -15,6 +15,7 @@ import javax.persistence.EntityManager;
 import javax.persistence.PersistenceContext;
 import javax.transaction.Transactional;
 import java.util.Collections;
+import java.util.Date;
 import java.util.List;
 import java.util.Optional;
 
@@ -58,7 +59,7 @@ public class UserService implements UserDetailsService {
 
         user.setRoles(Collections.singleton(em.find(Role.class, 1L)));
         user.setPassword(bCryptPasswordEncoder.encode(user.getPassword()));
-        //user.setPasswordConfirm(bCryptPasswordEncoder.encode(user.getPasswordConfirm()));
+        user.setCreatedAt(new Date());
         userRepository.save(user);
     }
 
@@ -100,3 +101,4 @@ public class UserService implements UserDetailsService {
                 .setParameter("paramId", idMin).getResultList();
     }
 }
+

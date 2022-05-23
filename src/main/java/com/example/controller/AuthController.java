@@ -4,35 +4,39 @@ import com.example.entity.ConfirmationToken;
 import com.example.entity.InvalidAccessToken;
 import com.example.entity.RefreshToken;
 import com.example.entity.User;
+import com.example.exception.UserAlreadyExistException;
 import com.example.model.AuthProvider;
 import com.example.repository.InvalidAccessTokenRepository;
-import com.example.rest.*;
+import com.example.rest.AuthenticationRequest;
+import com.example.rest.ChangePasswordRequest;
+import com.example.rest.ChangeUsernameRequest;
+import com.example.rest.SignUp;
+import com.example.security.jwt.JwtTokenProvider;
 import com.example.service.ConfirmationTokenService;
 import com.example.service.EmailSenderService;
 import com.example.service.RefreshTokenService;
-import com.example.security.jwt.JwtTokenProvider;
 import com.example.service.UserService;
 import org.apache.commons.lang3.RandomStringUtils;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.core.userdetails.UserDetails;
-import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
 import javax.servlet.http.Cookie;
 import javax.servlet.http.HttpServletResponse;
+import javax.validation.Valid;
+import javax.validation.constraints.Email;
+import javax.validation.constraints.Size;
 import java.io.IOException;
-import java.util.*;
+import java.util.NoSuchElementException;
 
-import static javax.servlet.http.HttpServletResponse.*;
+import static javax.servlet.http.HttpServletResponse.SC_BAD_REQUEST;
 import static org.springframework.http.ResponseEntity.badRequest;
 import static org.springframework.http.ResponseEntity.ok;
 
@@ -47,6 +51,12 @@ public class AuthController {
     private final EmailSenderService emailSenderService;
     private final InvalidAccessTokenRepository invalidAccessTokenRepository;
     private final BCryptPasswordEncoder bCryptPasswordEncoder;
+
+    @Value("${security.jwt.accessToken.expire-length}")
+    private int accessTokenExpiration;
+
+    @Value("${security.jwt.refreshToken.expire-length}")
+    private int refreshTokenExpiration;
 
     @Autowired
     public AuthController(AuthenticationManager authenticationManager, JwtTokenProvider jwtTokenProvider,
@@ -63,15 +73,37 @@ public class AuthController {
         this.invalidAccessTokenRepository = invalidAccessTokenRepository;
     }
 
-    @PostMapping("/signup")
-    public ResponseEntity<?> addUser(@RequestBody SignUp data) {
-        if (userService.findUserByUsername(data.getUsername()).isPresent()){
-            return badRequest().body("The user with this name is already exist!");
-        }
+    public Cookie createCookie(String name, String value, Boolean httpOnly, String path, int maxAge) {
+        Cookie cookie = new Cookie(name, value);
+        cookie.setHttpOnly(httpOnly);
+        cookie.setPath(path);
+        cookie.setMaxAge(maxAge/1000);
+        return cookie;
+    }
 
-        if (userService.findUserByEmail(data.getEmail()).isPresent()){
+    public void createTokenCookies(HttpServletResponse response, String accessToken, String refreshToken) {
+        response.addCookie(createCookie("accessToken", accessToken, true, "/", accessTokenExpiration));
+        response.addCookie(createCookie("accessTokenClone", "", false, "/", accessTokenExpiration));
+        response.addCookie(createCookie("refreshToken", refreshToken, true, "/", refreshTokenExpiration));
+    }
+
+    public void deleteTokenCookies(HttpServletResponse response) {
+        response.addCookie(createCookie("accessToken", null, true, "/", 0));
+        response.addCookie(createCookie("accessTokenClone", null, false, "/", 0));
+        response.addCookie(createCookie("refreshToken", null, true, "/", 0));
+    }
+
+    public String getCurrentUsername() {
+        return SecurityContextHolder.getContext().getAuthentication().getName();
+    }
+
+    @PostMapping("/signup")
+    public ResponseEntity<?> addUser(@Valid @RequestBody SignUp data) {
+        if (userService.findUserByUsername(data.getUsername()).isPresent())
+            return badRequest().body("The user with this nickname is already exist!");
+
+        if (userService.findUserByEmail(data.getEmail()).isPresent())
             return badRequest().body("The user with this email is already exist!");
-        }
 
         User user = new User(data.getUsername(), data.getEmail(), data.getPassword());
         user.setProvider(AuthProvider.local);
@@ -83,8 +115,7 @@ public class AuthController {
         mailMessage.setSubject("Complete Registration!");
         mailMessage.setFrom("danpr080704@gmail.com");
         mailMessage.setText("To confirm your account, please click here : "
-                +"http://localhost:8080/auth/confirm-signup?token="+confirmationToken.getToken());
-
+                + "http://localhost:8080/auth/confirm-signup?token=" + confirmationToken.getToken());
         emailSenderService.sendEmail(mailMessage);
 
         return ok().build();
@@ -92,190 +123,140 @@ public class AuthController {
 
     @GetMapping("/confirm-signup")
     public void confirmRegistration(HttpServletResponse response, @RequestParam("token") String token) throws IOException {
-        Optional<ConfirmationToken> confirmationToken = confirmationTokenService.findByToken(token);
+        ConfirmationToken confirmationToken = confirmationTokenService.findByToken(token).orElseThrow();
 
-        if (confirmationToken.isEmpty() || confirmationTokenService.ifExpired(confirmationToken.get())) {
-            response.sendError(SC_BAD_REQUEST);
+        if (confirmationTokenService.ifExpired(confirmationToken)) {
+            response.sendError(400);
             return;
         }
 
-        User user = confirmationToken.get().getUser();
+        User user = confirmationToken.getUser();
         user.setEnabled(true);
         userService.updateUser(user);
-        confirmationTokenService.deleteByToken(confirmationToken.get().getToken());
+        confirmationTokenService.deleteByToken(confirmationToken.getToken());
 
         response.sendRedirect("http://localhost:3000/login");
     }
 
     @PostMapping("/login")
-    public void signIn(@RequestBody AuthenticationRequest data, HttpServletResponse response) throws IOException {
+    public void signIn(@Valid @RequestBody AuthenticationRequest data,
+                       @CookieValue(name = "refreshToken", required = false) String refreshToken,
+                       HttpServletResponse response) throws IOException {
+        User user = userService.findUserByEmail(data.getEmail()).orElseThrow(() -> new NoSuchElementException("No such user with this email"));
         try {
-            UserDetails user = userService.findUserByEmail(data.getEmail()).orElseThrow(() -> new UsernameNotFoundException(""));
-            String username = user.getUsername();
-            Authentication authentication = new UsernamePasswordAuthenticationToken(username, data.getPassword(), user.getAuthorities());
-            authenticationManager.authenticate(authentication);
-
-            String accessToken = jwtTokenProvider.generateJwtToken(user);
-
-            Optional<RefreshToken> optionalRefreshToken = refreshTokenService.findByUsername(username);
-            RefreshToken refreshToken;
-            if (optionalRefreshToken.isEmpty() || !refreshTokenService.ifNonExpired(optionalRefreshToken.get())) {
-                refreshTokenService.deleteToken(username);
-                refreshToken = refreshTokenService.createToken(username);
-            }
-            else {
-                refreshToken = optionalRefreshToken.get();
-                refreshTokenService.updateToken(refreshToken);
-            }
-
-            Cookie accessTokenCookie = new Cookie("accessToken", accessToken);
-            accessTokenCookie.setHttpOnly(true);
-            accessTokenCookie.setPath("/");
-
-            Cookie refreshTokenCookie = new Cookie("refreshToken", refreshToken.getToken());
-            refreshTokenCookie.setHttpOnly(true);
-            refreshTokenCookie.setPath("/");
-
-            response.addCookie(accessTokenCookie);
-            response.addCookie(refreshTokenCookie);
-            response.getWriter().print(username);
-        } catch (UsernameNotFoundException e) {
-            response.setStatus(401);
-            response.getWriter().print(e.getMessage());
+            authenticationManager.authenticate(new UsernamePasswordAuthenticationToken(user.getUsername(), data.getPassword(), user.getAuthorities()));
         }
-    }
+        catch (BadCredentialsException ex) {
+            response.sendError(400, "Incorrect password");
+            return;
+        }
+        refreshTokenService.deleteToken(refreshToken);
 
-    @GetMapping("/get-cookies")
-    public void googleLogin(@RequestParam("accessToken") String accessToken,
-                            @RequestParam("refreshToken") String refreshToken,
-                            HttpServletResponse response) {
-        Cookie accessTokenCookie = new Cookie("accessToken", accessToken);
-        accessTokenCookie.setHttpOnly(true);
-        accessTokenCookie.setPath("/");
-
-        Cookie refreshTokenCookie = new Cookie("refreshToken", refreshToken);
-        refreshTokenCookie.setHttpOnly(true);
-        refreshTokenCookie.setPath("/");
-
-        response.addCookie(accessTokenCookie);
-        response.addCookie(refreshTokenCookie);
+        createTokenCookies(response, jwtTokenProvider.generateJwtToken(user), refreshTokenService.createToken(user).getToken());
+        response.getWriter().print(user.getUsername());
     }
 
     @PostMapping("/logout")
-    public void logout(@CookieValue("accessToken") String accessToken) {
-        System.out.println(accessToken);
+    public void logout(@CookieValue("accessToken") String accessToken, HttpServletResponse response) {
         String username = SecurityContextHolder.getContext().getAuthentication().getName();
-        refreshTokenService.deleteToken(username);
-
-        InvalidAccessToken invalidAccessToken =
-                new InvalidAccessToken(username, accessToken, jwtTokenProvider.getExpiration(accessToken));
-        invalidAccessTokenRepository.save(invalidAccessToken);
+        refreshTokenService.deleteToken(userService.findUserByUsername(username).orElseThrow());
+        invalidAccessTokenRepository.save(new InvalidAccessToken(username, accessToken, jwtTokenProvider.getExpiration(accessToken)));
+        deleteTokenCookies(response);
     }
 
     @PostMapping("/renew-access-token")
     public void renewAccessToken(@CookieValue("refreshToken") String token, HttpServletResponse response) throws IOException {
-        final Logger logger = LoggerFactory.getLogger(AuthController.class);
-
-        String username = SecurityContextHolder.getContext().getAuthentication().getName();
-        Optional<RefreshToken> refreshToken = refreshTokenService.findByToken(token);
-        if (refreshToken.isEmpty()) {
-            logger.error("This refresh token doesn't exist");
+        RefreshToken refreshToken = refreshTokenService.findByToken(token).orElseThrow();
+        if (refreshTokenService.ifNonExpired(refreshToken)) {
+            refreshTokenService.updateToken(refreshToken);
+            createTokenCookies(response, jwtTokenProvider.generateJwtToken(refreshToken.getUser()), refreshToken.getToken());
+        }
+        else {
             response.sendError(401);
-            return;
+            deleteTokenCookies(response);
         }
-
-        UserDetails user = refreshToken.get().getUser();
-        if (user.getUsername().equals(username) && refreshTokenService.ifNonExpired(refreshToken.get())) {
-            refreshTokenService.updateToken(refreshToken.get());
-
-            Cookie accessTokenCookie = new Cookie("accessToken", jwtTokenProvider.generateJwtToken(user));
-            accessTokenCookie.setHttpOnly(true);
-            response.addCookie(accessTokenCookie);
-        }
-
-        response.sendError(401);
     }
 
     @PostMapping("/change-password")
-    public ResponseEntity<String> changePassword(@CookieValue("accessToken") String accessToken,
-                                                 @RequestBody ChangePasswordRequest data) {
-        String username = SecurityContextHolder.getContext().getAuthentication().getName();
-        authenticationManager.authenticate(new UsernamePasswordAuthenticationToken(username, data.getOldPassword()));
+    public ResponseEntity<?> changePassword(@CookieValue("accessToken") String accessToken, @Valid @RequestBody ChangePasswordRequest data) {
+        User user = userService.findUserByUsername(getCurrentUsername()).orElseThrow();
+        if (user.getProvider() != AuthProvider.local)
+            return badRequest().build();
 
-        User user = userService.findUserByUsername(username).orElseThrow();
-        user.setPassword(bCryptPasswordEncoder.encode(data.getNewPassword()));
-        userService.updateUser(user);
-
-        InvalidAccessToken invalidAccessToken =
-                new InvalidAccessToken(username, accessToken, jwtTokenProvider.getExpiration(accessToken));
-        invalidAccessTokenRepository.save(invalidAccessToken);
-
-        return ok().body(jwtTokenProvider.generateJwtToken(user));
-    }
-
-    @PostMapping("/change-username")
-    public void changeUsername(@CookieValue("accessToken") String accessToken,
-                               @RequestBody ChangeUsernameRequest data, HttpServletResponse response) {
-        String username = SecurityContextHolder.getContext().getAuthentication().getName();
-        authenticationManager.authenticate(new UsernamePasswordAuthenticationToken(username, data.getPassword()));
-
-        User user = userService.findUserByUsername(username).orElseThrow();
-        user.setUsername(data.getNewUsername());
-        userService.updateUser(user);
-
-        InvalidAccessToken invalidAccessToken =
-                new InvalidAccessToken(username, accessToken, jwtTokenProvider.getExpiration(accessToken));
-        invalidAccessTokenRepository.save(invalidAccessToken);
-
-        Cookie accessTokenCookie = new Cookie("accessToken", jwtTokenProvider.generateJwtToken(user));
-        accessTokenCookie.setHttpOnly(true);
-        response.addCookie(accessTokenCookie);
-    }
-
-    @GetMapping("/reset-password")
-    public void forgotPassword(String email, HttpServletResponse response) throws IOException {
-        Optional<User> user = userService.findUserByEmail(email);
-        if (user.isEmpty()) {
-            response.sendError(401);
-            return;
+        try {
+            authenticationManager.authenticate(new UsernamePasswordAuthenticationToken(getCurrentUsername(), data.getOldPassword()));
+        }
+        catch (BadCredentialsException ex) {
+            return badRequest().body("Incorrect password");
         }
 
+        user.setPassword(bCryptPasswordEncoder.encode(data.getNewPassword()));
+        userService.updateUser(user);
+        invalidAccessTokenRepository.save(new InvalidAccessToken(getCurrentUsername(), accessToken, jwtTokenProvider.getExpiration(accessToken)));
+        return ok().build();
+    }
+
+//    @PostMapping("/change-username")
+//    public ResponseEntity<String> changeUsername(@CookieValue("accessToken") String accessToken,
+//                                                 @Valid @RequestBody ChangeUsernameRequest data) throws UserAlreadyExistException {
+//        try {
+//            authenticationManager.authenticate(new UsernamePasswordAuthenticationToken(getCurrentUsername(), data.getPassword()));
+//        }
+//        catch (BadCredentialsException ex) {
+//            return badRequest().body("Incorrect password");
+//        }
+//        User user = userService.findUserByUsername(getCurrentUsername()).orElseThrow(() -> new UserAlreadyExistException("This nickname is already taken"));
+//        user.setUsername(data.getNewUsername());
+//        userService.updateUser(user);
+//        invalidAccessTokenRepository.save(new InvalidAccessToken(getCurrentUsername(), accessToken, jwtTokenProvider.getExpiration(accessToken)));
+//        return ok().build();
+//    }
+
+    @PostMapping("/change-username")
+    public ResponseEntity<String> changeUsernameForOAuth(@CookieValue("accessToken") String accessToken,
+                                                         @RequestParam("newUsername") String newUsername) throws UserAlreadyExistException {
+        User user = userService.findUserByUsername(getCurrentUsername()).orElseThrow(() -> new UserAlreadyExistException("This nickname is already taken"));
+        user.setUsername(newUsername);
+        userService.updateUser(user);
+        invalidAccessTokenRepository.save(new InvalidAccessToken(getCurrentUsername(), accessToken, jwtTokenProvider.getExpiration(accessToken)));
+        return ok().build();
+    }
+
+    @PostMapping("/reset-password")
+    public void resetPassword(@Email @RequestParam("email") String email) {
         String newPassword = RandomStringUtils.random(15, true, true);
-        String confirmationToken = confirmationTokenService.createConfirmationToken(user.get()).getToken();
+        String confirmationToken = confirmationTokenService.
+                createConfirmationToken(userService.findUserByEmail(email).orElseThrow(
+                        () -> new NoSuchElementException("No such user with this username"))).getToken();
 
         SimpleMailMessage mailMessage = new SimpleMailMessage();
         mailMessage.setTo(email);
         mailMessage.setSubject("Complete Registration!");
         mailMessage.setFrom("danpr080704@gmail.com");
-        mailMessage.setText("Your new password will be : "+newPassword+"\nTo reset your password, please click here : "
-                +"http://localhost:8080/auth/confirm-reset-password?token="+confirmationToken+"&password="+bCryptPasswordEncoder.encode(newPassword));
+        mailMessage.setText("Your new password will be : " + newPassword +
+                "\nTo reset your password, please click here : " +
+                "http://localhost:8080/auth/confirm-reset-password?token=" + confirmationToken +
+                "&password=" + bCryptPasswordEncoder.encode(newPassword));
 
         emailSenderService.sendEmail(mailMessage);
     }
 
     @GetMapping("/confirm-reset-password")
     public void confirmResetPassword(HttpServletResponse response,
-                                                  @RequestParam("token") String token, @RequestParam("password") String password) throws IOException {
-        Optional<ConfirmationToken> confirmationToken = confirmationTokenService.findByToken(token);
+                                     @RequestParam("token") String token,
+                                     @RequestParam("password") @Size(min = 8, max = 20) String password) throws IOException {
+        ConfirmationToken confirmationToken = confirmationTokenService.findByToken(token).orElseThrow();
 
-        if (confirmationToken.isEmpty() || confirmationTokenService.ifExpired(confirmationToken.get())) {
+        if (confirmationTokenService.ifExpired(confirmationToken)) {
             response.sendError(SC_BAD_REQUEST);
             return;
         }
 
-        User user = confirmationToken.get().getUser();
+        User user = confirmationToken.getUser();
         user.setPassword(password);
         userService.updateUser(user);
-        confirmationTokenService.deleteByToken(confirmationToken.get().getToken());
+        confirmationTokenService.deleteByToken(confirmationToken.getToken());
 
         response.sendRedirect("http://localhost:3000/login");
-    }
-
-    @GetMapping("/if-authenticated")
-    public void ifAuthenticated(HttpServletResponse response, @CookieValue("accessToken") String accessToken,
-                                @CookieValue("refreshToken") String refreshToken) throws IOException {
-        if (invalidAccessTokenRepository.findByToken(accessToken).isPresent() || refreshTokenService.findByToken(refreshToken).isEmpty()) {
-            response.sendError(401);
-        }
     }
 }

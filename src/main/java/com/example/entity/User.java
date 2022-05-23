@@ -6,6 +6,7 @@ import org.springframework.security.core.userdetails.UserDetails;
 
 import javax.persistence.*;
 import java.util.Collection;
+import java.util.Date;
 import java.util.Set;
 
 @Entity
@@ -43,11 +44,18 @@ public class User implements UserDetails {
     @Column(name = "enabled")
     private boolean enabled = false;
 
+    @Column(name = "created_at")
+    private Date createdAt;
+
     @ManyToMany(fetch = FetchType.EAGER)
     @JoinTable (name="user_role",
             joinColumns=@JoinColumn (name="user_id"),
             inverseJoinColumns=@JoinColumn(name="role_id"))
     private Set<Role> roles;
+
+    @Transient
+    @OneToMany(mappedBy = "user")
+    private Set<RefreshToken> tokens;
 
     public User() {}
 
@@ -166,5 +174,21 @@ public class User implements UserDetails {
 
     public void setLgResult(double lgResult) {
         this.lgResult = lgResult;
+    }
+
+    public Date getCreatedAt() {
+        return createdAt;
+    }
+
+    public void setCreatedAt(Date createdAt) {
+        this.createdAt = createdAt;
+    }
+
+    public Set<RefreshToken> getTokens() {
+        return tokens;
+    }
+
+    public void setTokens(Set<RefreshToken> tokens) {
+        this.tokens = tokens;
     }
 }

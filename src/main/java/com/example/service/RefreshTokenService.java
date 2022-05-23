@@ -1,8 +1,10 @@
 package com.example.service;
 
 import com.example.entity.RefreshToken;
+import com.example.entity.User;
 import com.example.repository.RefreshTokenRepository;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Service;
 
 import javax.transaction.Transactional;
@@ -18,26 +20,20 @@ public class RefreshTokenService {
     private int refreshTokenExpiration;
 
     private final RefreshTokenRepository refreshTokenRepository;
-    private final UserService userService;
 
-    public RefreshTokenService(RefreshTokenRepository refreshTokenRepository, UserService userService) {
+    public RefreshTokenService(RefreshTokenRepository refreshTokenRepository) {
         this.refreshTokenRepository = refreshTokenRepository;
-        this.userService = userService;
     }
 
     public Optional<RefreshToken> findByToken(String token) {
         return refreshTokenRepository.findByToken(token);
     }
 
-    public Optional<RefreshToken> findByUsername(String username) {
-        return refreshTokenRepository.findByUserUsername(username);
-    }
-
-    public RefreshToken createToken(String username) {
+    public RefreshToken createToken(User user) {
         System.out.println(Instant.now().plusMillis(refreshTokenExpiration));
 
         RefreshToken refreshToken = new RefreshToken();
-        refreshToken.setUser(userService.findUserByUsername(username).orElseThrow());
+        refreshToken.setUser(user);
         refreshToken.setExpiryDate(new Date(new Date().getTime() + refreshTokenExpiration));
         refreshToken.setToken(UUID.randomUUID().toString());
         refreshTokenRepository.save(refreshToken);
@@ -53,7 +49,11 @@ public class RefreshTokenService {
         refreshTokenRepository.save(refreshToken);
     }
 
-    public void deleteToken(String username) {
-        refreshTokenRepository.deleteByUserUsername(username);
+    public void deleteToken(User user) {
+        refreshTokenRepository.deleteByUser(user);
+    }
+
+    public void deleteToken(String token) {
+        refreshTokenRepository.deleteByToken(token);
     }
 }

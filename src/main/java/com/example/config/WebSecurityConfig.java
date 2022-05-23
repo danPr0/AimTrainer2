@@ -64,8 +64,8 @@ public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
                             "/auth/renew-access-token", "/auth/google-login", "oauth2/**").anonymous()
                     .antMatchers("/admin/**").hasRole("ADMIN")
                     .antMatchers("/*").hasRole("USER")
-                    .antMatchers("auth/reset-password", "/auth/confirm-reset-password*",
-                            "/auth/confirm-signup*", "/auth/get-cookies*").permitAll()
+                    .antMatchers("/auth/reset-password", "/auth/confirm-reset-password*",
+                            "/auth/confirm-signup*").permitAll()
                     .antMatchers("/auth/*").authenticated()
                     .anyRequest().authenticated().and()
                 .oauth2Login()
