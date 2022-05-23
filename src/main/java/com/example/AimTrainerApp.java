@@ -5,8 +5,8 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.web.servlet.support.SpringBootServletInitializer;
 
 @SpringBootApplication
-public class MyFirstSpringAppApplication extends SpringBootServletInitializer {
+public class AimTrainerApp extends SpringBootServletInitializer {
     public static void main(String[] args) {
-        SpringApplication.run(MyFirstSpringAppApplication.class, args);
+        SpringApplication.run(AimTrainerApp.class, args);
     }
 }
