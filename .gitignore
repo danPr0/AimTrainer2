@@ -2,10 +2,10 @@
 *.properties
 
 #Test directory
-/src/test/*
+src/test/
 
 #Target directory
-/target/*
+target/
 
 # Compiled class file
 *.class
