@@ -196,22 +196,6 @@ public class AuthController {
         return ok().build();
     }
 
-//    @PostMapping("/change-username")
-//    public ResponseEntity<String> changeUsername(@CookieValue("accessToken") String accessToken,
-//                                                 @Valid @RequestBody ChangeUsernameRequest data) throws UserAlreadyExistException {
-//        try {
-//            authenticationManager.authenticate(new UsernamePasswordAuthenticationToken(getCurrentUsername(), data.getPassword()));
-//        }
-//        catch (BadCredentialsException ex) {
-//            return badRequest().body("Incorrect password");
-//        }
-//        User user = userService.findUserByUsername(getCurrentUsername()).orElseThrow(() -> new UserAlreadyExistException("This nickname is already taken"));
-//        user.setUsername(data.getNewUsername());
-//        userService.updateUser(user);
-//        invalidAccessTokenRepository.save(new InvalidAccessToken(getCurrentUsername(), accessToken, jwtTokenProvider.getExpiration(accessToken)));
-//        return ok().build();
-//    }
-
     @PostMapping("/change-username")
     public ResponseEntity<String> changeUsernameForOAuth(@CookieValue("accessToken") String accessToken,
                                                          @RequestParam("newUsername") String newUsername) throws UserAlreadyExistException {

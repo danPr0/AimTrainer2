@@ -53,10 +53,6 @@ public class User implements UserDetails {
             inverseJoinColumns=@JoinColumn(name="role_id"))
     private Set<Role> roles;
 
-    @Transient
-    @OneToMany(mappedBy = "user")
-    private Set<RefreshToken> tokens;
-
     public User() {}
 
     public User(String username, String email, String password){
@@ -182,13 +178,5 @@ public class User implements UserDetails {
 
     public void setCreatedAt(Date createdAt) {
         this.createdAt = createdAt;
-    }
-
-    public Set<RefreshToken> getTokens() {
-        return tokens;
-    }
-
-    public void setTokens(Set<RefreshToken> tokens) {
-        this.tokens = tokens;
     }
 }
